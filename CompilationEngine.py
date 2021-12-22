@@ -128,6 +128,7 @@ class CompilationEngine:
         # already at the first line of this block, aka the keyword
         self.write_tag("subroutineDec", True)
         self.nested_number += 1
+
         self.write_line(KEYWORD, self.tokenizer.keyword())
         self.advance()
         # write return type, could be keyword or identifier
@@ -160,11 +161,38 @@ class CompilationEngine:
         """Compiles a (possibly empty) parameter list, not including the 
         enclosing "()".
         """
-        # already at the first line of parameter list
+        # already at the first line of parameter list, aka the first argument's type (if exist)
+        # if no parameter, then the current line is ")"
+        # if input correct, then if token type is symbol, it must be ")"
+        if self.tokenizer.token_type() == SYMBOL:
+            return
+        self.write_tag("parameterList", True)
+        self.nested_number += 1
+        # write arg[0] type, if input correct, this must be a key word (int, bool, etc)
+        self.write_line(KEYWORD, self.tokenizer.keyword())
+        self.advance()
+        # write variable name, if input correct, here must be an identifier, input name
+        self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.advance()
+        # if input correct, here must be a symbol, either "," or ")"
+        while self.tokenizer.symbol() == ",":
+            # write arg[i] type, if input correct, this must be a key word (int, bool, etc)
+            self.write_line(KEYWORD, self.tokenizer.keyword())
+            self.advance()
+            # write variable name, if input correct, here must be an identifier, input name
+            self.write_line(IDENTIFIER, self.tokenizer.identifier())
+            self.advance()
+        self.nested_number -= 1
+        self.write_tag("parameterList", False)
 
         pass
 
     def compile_subroutine_body(self) -> None:
+        self.write_tag("subroutineBody", True)
+        self.nested_number += 1
+
+        self.nested_number -= 1
+        self.write_tag("subroutineBody", False)
         pass
 
     def compile_var_dec(self) -> None:

@@ -124,8 +124,10 @@ def analyze_file(
       > 
       > Compiling "C:\...\projects\09\Reflect"
     """
-    # Your code goes here!
-    pass
+    tokenizer  = JackTokenizer(input_file)
+    compilation_engine = CompilationEngine(tokenizer, output_file)
+    compilation_engine.compile_class()
+
 
 
 if "__main__" == __name__:
@@ -147,7 +149,7 @@ if "__main__" == __name__:
         filename, extension = os.path.splitext(input_path)
         if extension.lower() != ".jack":
             continue
-        output_path = filename + ".xml"
+        output_path = filename + "test.xml"
         with open(input_path, 'r') as input_file, \
                 open(output_path, 'w') as output_file:
             analyze_file(input_file, output_file)

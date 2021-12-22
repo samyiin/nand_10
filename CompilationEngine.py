@@ -15,13 +15,20 @@ INDENTATION = "    "
 
 CLASS_VAR_DEC = "class_var_dec"
 SUBROUTINE_DECLARATION = "subroutine_dec"
+VAR_DEC = "var_dec"
+STATEMENT = "statement"
 
 
+# used when need to decide the type to next structure
 def structure_type(keyword):
     if keyword in {"static", "field"}:
         return CLASS_VAR_DEC
     if keyword in {"constructor", "function", "method"}:
         return SUBROUTINE_DECLARATION
+    if keyword in {"var"}:
+        return VAR_DEC
+    if keyword in {"let", "if", "while", "do", "return"}:
+        return STATEMENT
 
 
 class CompilationEngine:
@@ -51,6 +58,20 @@ class CompilationEngine:
         self.write_indentation()
         self.output.write("<{}> {} </{}>\n".format(label, name, label))
 
+    # integrated write line function
+    # from compile_var_dec and below it uses compile_line instead of write line, if time permits I will change the above
+    def compile_line(self):
+        self.write_indentation()
+        label = self.tokenizer.token_type()
+        name = ""
+        if label == KEYWORD:
+            name = self.tokenizer.keyword()
+        if label == SYMBOL:
+            name = self.tokenizer.symbol()
+        if label == IDENTIFIER:
+            name = self.tokenizer.identifier()
+        self.output.write("<{}> {} </{}>\n".format(label, name, label))
+
     def write_tag(self, tag_name, start):
         self.write_indentation()
         if start:
@@ -64,6 +85,7 @@ class CompilationEngine:
     # we will not check correctness every time we write line
     # if input correct and our function correct, then there shall be no problem
     # nested number should be added before enter recursive function, responsibility of outside function
+    # but in general no need to call it outside, because the <tag> is at the same level of indentation as others
 
     def compile_class(self) -> None:
         """Compiles a complete class."""
@@ -77,7 +99,7 @@ class CompilationEngine:
         self.write_line(IDENTIFIER, self.tokenizer.identifier())
         self.advance()
         self.write_line(SYMBOL, "{")
-        self.nested_number += 1
+
         self.advance()
         while self.tokenizer.has_more_tokens():
             if structure_type(self.tokenizer.keyword()) == CLASS_VAR_DEC:
@@ -86,7 +108,6 @@ class CompilationEngine:
                 self.compile_subroutine()
             # assume no exceptions
             self.advance()
-        self.nested_number -= 1
         self.write_line(SYMBOL, "}")
         self.nested_number -= 1
         self.write_tag("class", False)
@@ -144,15 +165,10 @@ class CompilationEngine:
         self.write_line(SYMBOL, "(")
         self.advance()
         # write parameter list
-        self.nested_number += 1
         self.compile_parameter_list()
-        self.nested_number -= 1
         self.write_line(SYMBOL, ")")
         # write subroutine body
-        self.nested_number += 1
         self.compile_subroutine_body()
-        self.nested_number -= 1
-
         self.nested_number -= 1
         self.write_tag("subroutineDec", False)
         pass
@@ -188,23 +204,69 @@ class CompilationEngine:
         pass
 
     def compile_subroutine_body(self) -> None:
+        # if input correct, current line is "{"
         self.write_tag("subroutineBody", True)
         self.nested_number += 1
-
+        self.write_line(SYMBOL, "{")
+        self.advance()
+        # write var_dec if exist any
+        while structure_type(self.tokenizer.keyword()) == VAR_DEC:
+            self.compile_var_dec()
+            self.advance()
+        # if input correct, keyword is either "var" or statements' keyword
+        if structure_type(self.tokenizer.keyword()) == STATEMENT:
+            self.compile_statements()
+        self.advance()
+        # if input correct, here should simply be "{', no need for tokenizer.symbol
+        self.write_line(SYMBOL, "}")
         self.nested_number -= 1
         self.write_tag("subroutineBody", False)
         pass
 
     def compile_var_dec(self) -> None:
         """Compiles a var declaration."""
-        # Your code goes here!
+        self.write_tag("varDec", True)
+        self.nested_number += 1
+        # if input correct, tokenizer.keyword == var
+        self.write_line(KEYWORD, "var")
+        self.advance()
+        # write type
+        self.compile_line()
+        self.advance()
+        # write varName
+        self.compile_line()
+        self.advance()
+        # now if input correct, it must be a symbol, "," or ";"
+        while self.tokenizer.symbol() == ",":
+            # write symbol ","
+            self.compile_line()
+            self.advance()
+            # write varName
+            self.compile_line()
+            self.advance()
+        # it must be ";"
+        # write ";"
+        self.compile_line()
+
+        self.nested_number -= 1
+        self.write_tag("varDec", False)
+
         pass
 
     def compile_statements(self) -> None:
         """Compiles a sequence of statements, not including the enclosing 
         "{}".
         """
-        # Your code goes here!
+        self.write_tag("statements", True)
+        self.nested_number += 1
+        # current line should be the keyword o which kind of statement
+        
+
+
+        self.nested_number -= 1
+        self.write_tag("statements", False)
+
+
         pass
 
     def compile_do(self) -> None:

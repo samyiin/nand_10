@@ -13,8 +13,17 @@ IDENTIFIER = "identifier"
 SYMBOL = "symbol"
 INDENTATION = "    "
 
-VAR_DECLARATION = "var_dec"
+CLASS_VAR_DEC = "class_var_dec"
 SUBROUTINE_DECLARATION = "subroutine_dec"
+
+
+def structure_type(keyword):
+    if keyword in {"static", "field"}:
+        return CLASS_VAR_DEC
+    if keyword in {"constructor", "function", "method"}:
+        return SUBROUTINE_DECLARATION
+
+
 class CompilationEngine:
     """Gets input from a JackTokenizer and emits its parsed structure into an
     output stream.
@@ -31,29 +40,34 @@ class CompilationEngine:
         self.output = output_stream
         self.nested_number = 0
         pass
+
     def advance(self):
         if self.tokenizer.has_more_tokens():
             self.tokenizer.advance()
-            self.write_indentation()
         else:
             print("no more tokens")
 
-    def write_line(self, label, name ):
+    def write_line(self, label, name):
+        self.write_indentation()
         self.output.write("<{}> {} </{}>\n".format(label, name, label))
+
+    def write_tag(self, tag_name, start):
+        self.write_indentation()
+        if start:
+            self.output.write("<{}>\n".format(tag_name))
+        else:
+            self.output.write("</{}>\n".format(tag_name))
 
     def write_indentation(self):
         self.output.write("{}".format(self.nested_number * INDENTATION))
 
-    def structure_type(self, keyword):
-        if keyword in {"static", "field"}:
-            return VAR_DECLARATION
-        if keyword in {"constructor", "function", "method"}:
-            return SUBROUTINE_DECLARATION
-# we will not check correctness every time we write line
-# if input correct and our function correct, then there shall be no problem
+    # we will not check correctness every time we write line
+    # if input correct and our function correct, then there shall be no problem
+    # nested number should be added before enter recursive function, responsibility of outside function
+
     def compile_class(self) -> None:
         """Compiles a complete class."""
-        self.output.write("<class>\n")
+        self.write_tag("class", True)
         # assume input is correct, then line will be in form:
         # class CLASSNAME { CLASSVARDEC* SUBROUTINEDEC* }
         self.nested_number += 1
@@ -63,23 +77,46 @@ class CompilationEngine:
         self.write_line(IDENTIFIER, self.tokenizer.identifier())
         self.advance()
         self.write_line(SYMBOL, "{")
+        self.nested_number += 1
         self.advance()
         while self.tokenizer.has_more_tokens():
-            if self.structure_type(self.tokenizer.keyword()) == VAR_DECLARATION:
+            if structure_type(self.tokenizer.keyword()) == CLASS_VAR_DEC:
                 self.compile_class_var_dec()
-            if self.structure_type(self.tokenizer.keyword()) == SUBROUTINE_DECLARATION:
+            if structure_type(self.tokenizer.keyword()) == SUBROUTINE_DECLARATION:
                 self.compile_subroutine()
             # assume no exceptions
             self.advance()
+        self.nested_number -= 1
         self.write_line(SYMBOL, "}")
-        self.nested_number += 1
-        self.output.write("</class>\n")
+        self.nested_number -= 1
+        self.write_tag("class", False)
         pass
 
     def compile_class_var_dec(self) -> None:
         """Compiles a static declaration or a field declaration."""
-        # already at the first line of this block
-        self.output.write("variable declaration")
+        # already at the first line of this block, aka the keyword
+        self.write_tag("classVarDec", True)
+        self.nested_number += 1
+        # write keyword
+        self.write_line(KEYWORD, self.tokenizer.keyword())
+        self.advance()
+        # write type
+        self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.advance()
+        # write varName
+        self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.advance()
+        # if input correct, the token tpe should be symbol, either "," or ";"
+        while self.tokenizer.symbol() == ",":
+            self.write_line(SYMBOL, ",")
+            self.advance()
+            # if input is correct, followed by the "," should be a variable name
+            self.write_line(IDENTIFIER, self.tokenizer.identifier())
+            self.advance()
+        self.write_line(SYMBOL, ";")
+        self.nested_number -= 1
+        self.write_tag("classVarDec", False)
+
         pass
 
     def compile_subroutine(self) -> None:
@@ -88,15 +125,46 @@ class CompilationEngine:
         You can assume that classes with constructors have at least one field,
         you will understand why this is necessary in project 11.
         """
-        # already at the first line of this block
-        self.output.write("subroutine declaration")
+        # already at the first line of this block, aka the keyword
+        self.write_tag("subroutineDec", True)
+        self.nested_number += 1
+        self.write_line(KEYWORD, self.tokenizer.keyword())
+        self.advance()
+        # write return type, could be keyword or identifier
+        if self.tokenizer.token_type() == KEYWORD:
+            self.write_line(KEYWORD, self.tokenizer.keyword())
+        if self.tokenizer.token_type() == IDENTIFIER:
+            self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.advance()
+        # write function name (subroutine name)
+        self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.advance()
+        # if input correct, here should be "(", so there is no difference with using tokenizer.symbol
+        self.write_line(SYMBOL, "(")
+        self.advance()
+        # write parameter list
+        self.nested_number += 1
+        self.compile_parameter_list()
+        self.nested_number -= 1
+        self.write_line(SYMBOL, ")")
+        # write subroutine body
+        self.nested_number += 1
+        self.compile_subroutine_body()
+        self.nested_number -= 1
+
+        self.nested_number -= 1
+        self.write_tag("subroutineDec", False)
         pass
 
     def compile_parameter_list(self) -> None:
         """Compiles a (possibly empty) parameter list, not including the 
         enclosing "()".
         """
-        # Your code goes here!
+        # already at the first line of parameter list
+
+        pass
+
+    def compile_subroutine_body(self) -> None:
         pass
 
     def compile_var_dec(self) -> None:

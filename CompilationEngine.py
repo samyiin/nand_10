@@ -18,6 +18,9 @@ SUBROUTINE_DECLARATION = "subroutine_dec"
 VAR_DEC = "var_dec"
 STATEMENT = "statement"
 
+# compile statement and compile expression need look ahead, so no need advance after call, we will call advance inside
+# maybe all function no need advance after call, we can put inside, --> optimise
+# all call line can be replaced with compile line --> optimise
 
 # used when need to decide the type to next structure
 def structure_type(keyword):
@@ -27,7 +30,7 @@ def structure_type(keyword):
         return SUBROUTINE_DECLARATION
     if keyword in {"var"}:
         return VAR_DEC
-    if keyword in {"let", "if", "while", "do", "return"}:
+    if keyword in {"let", "if", "while", "do", "return", "else"}:
         return STATEMENT
 
 
@@ -214,9 +217,9 @@ class CompilationEngine:
             self.compile_var_dec()
             self.advance()
         # if input correct, keyword is either "var" or statements' keyword
+        # if my function is correct, now the keyword must b statement
         if structure_type(self.tokenizer.keyword()) == STATEMENT:
             self.compile_statements()
-        self.advance()
         # if input correct, here should simply be "{', no need for tokenizer.symbol
         self.write_line(SYMBOL, "}")
         self.nested_number -= 1
@@ -257,42 +260,177 @@ class CompilationEngine:
         """Compiles a sequence of statements, not including the enclosing 
         "{}".
         """
+        # so for in the caller's level, after every call of compile_statment, no need to call advance()
+
         self.write_tag("statements", True)
         self.nested_number += 1
         # current line should be the keyword o which kind of statement
-        
+        if self.tokenizer.keyword() == "let":
+            self.compile_let()
+        if self.tokenizer.keyword() == "if":
+            self.compile_if()
+        if self.tokenizer.keyword() == "while":
+            self.compile_while()
+        if self.tokenizer.keyword() == "do":
+            self.compile_do()
+        if self.tokenizer.keyword() == "return":
+            self.compile_return()
 
-
+        self.advance()
+        # because of my advance logic, else statement will be handled specially
+        # assume input correct, no need to check if the else is followed by an if
+        if self.tokenizer.token_type() == KEYWORD and self.tokenizer.keyword() == "else":
+            self.compile_else()
+            return
         self.nested_number -= 1
         self.write_tag("statements", False)
-
-
         pass
 
     def compile_do(self) -> None:
         """Compiles a do statement."""
-        # Your code goes here!
+        self.write_tag("doStatement", True)
+        self.nested_number += 1
+        # current line should be the keyword o which kind of statement
+        # write "do"
+        self.compile_line()
+        self.advance()
+        # now the line should be the first word of a subroutine call
+        # note! compile_subroutine is for subroutine declaration, not for subroutine call
+        self.compile_subroutine_call()
+        self.advance()
+        # write ";"
+        self.compile_line()
+        self.nested_number -= 1
+        self.write_tag("doStatement", False)
+        pass
+
+    def compile_subroutine_call(self) -> None:
         pass
 
     def compile_let(self) -> None:
         """Compiles a let statement."""
         # Your code goes here!
+        # letStatement
+
+        self.write_tag("letStatement", True)
+        self.nested_number += 1
+        # current line should be the keyword o which kind of statement
+        # write "let"
+        self.compile_line()
+        self.advance()
+        # write varName
+        self.compile_line()
+        self.advance()
+        # here the token type must be a symbol, either "[" or "="
+        if self.tokenizer.token_type() == "[":
+            # write "["
+            self.compile_line()
+            self.advance()
+            # write expression
+            self.compile_expression()
+            # write "]"
+            self.compile_line()
+            self.advance()
+        # write "="
+        self.compile_line()
+        self.advance()
+        # write expression
+        self.compile_expression()
+        # write ";"
+        self.compile_line()
+        self.nested_number -= 1
+        self.write_tag("letStatement", False)
         pass
 
     def compile_while(self) -> None:
         """Compiles a while statement."""
-        # Your code goes here!
+
+        self.write_tag("whileStatement", True)
+        self.nested_number += 1
+        # current line should be the keyword o which kind of statement
+        # write "while"
+        self.compile_line()
+        self.advance()
+        # write "("
+        self.compile_line()
+        self.advance()
+        # write expression
+        self.compile_expression()
+        # write ")"
+        self.compile_line()
+        self.advance()
+        # write "{"
+        self.compile_line()
+        self.advance()
+        # write statements
+        self.compile_statements()
+        # write "}"
+        self.compile_line()
+        self.nested_number -= 1
+        self.write_tag("whileStatement", False)
         pass
 
     def compile_return(self) -> None:
         """Compiles a return statement."""
-        # Your code goes here!
+        self.write_tag("returnStatement", True)
+        self.nested_number += 1
+        # current line should be the keyword o which kind of statement
+        # write return
+        self.compile_line()
+        self.advance()
+        # if there is expression, then tokenType is keyword, else it's symbol
+        # if it's not synbol, then it's keyword
+        if self.tokenizer.token_type() != SYMBOL:
+            self.compile_expression()
+        # write ";"
+        self.compile_line()
+        self.nested_number -= 1
+        self.write_tag("returnStatement", False)
         pass
 
     def compile_if(self) -> None:
         """Compiles a if statement, possibly with a trailing else clause."""
-        # Your code goes here!
+        # there might be a else followed by if, but if we advance to next line, we will mess up all the advance logic
+        # so the else statement will be handeled in the call compile_statments level (2 levels above)
+        # if there's an else, it must be followed an if
+        self.write_tag("ifStatement", True)
+        self.nested_number += 1
+        # current line should be the keyword o which kind of statement
+        # write "if"
+        self.compile_line()
+        self.advance()
+        # write "("
+        self.compile_line()
+        self.advance()
+        # write expression
+        self.compile_expression()
+        # write ")"
+        self.compile_line()
+        self.advance()
+        # write "{"
+        self.compile_line()
+        self.advance()
+        # write statements
+        self.compile_statements()
+        # write "}"
+        self.compile_line()
+        self.nested_number -= 1
+        self.write_tag("ifStatement", False)
         pass
+
+    def compile_else(self):
+        # if there's an else, then now we are at the line of else
+        # write "else"
+        self.compile_line()
+        self.advance()
+        # write "{"
+        self.compile_line()
+        self.advance()
+        # write statements
+        self.compile_statements()
+        # write "}"
+        self.compile_line()
+        self.advance()
 
     def compile_expression(self) -> None:
         """Compiles an expression."""

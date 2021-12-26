@@ -126,8 +126,7 @@ def analyze_file(
     """
     tokenizer  = JackTokenizer(input_file)
     compilation_engine = CompilationEngine(tokenizer, output_file)
-    compilation_engine.nested_number += 1
-    compilation_engine.compile_subroutine_body()
+    compilation_engine.compile_subroutine()
 
 
 

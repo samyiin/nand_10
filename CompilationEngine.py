@@ -11,12 +11,24 @@ from JackTokenizer import JackTokenizer
 KEYWORD = "keyword"
 IDENTIFIER = "identifier"
 SYMBOL = "symbol"
-INDENTATION = "    "
+INT_CONSTANT = "integerConstant"
+STR_CONST = "stringConstant"
+INDENTATION = "  "
 
 CLASS_VAR_DEC = "class_var_dec"
 SUBROUTINE_DECLARATION = "subroutine_dec"
 VAR_DEC = "var_dec"
 STATEMENT = "statement"
+
+TERM_INT = "integerConstant"
+TERM_STR = "stringConstant"
+TERM_KEYWORD = "keywordConstant"
+TERM_VARNAME = "varName"
+TERM_VARACCESS = "varName[expression]"
+TERM_SUBROUTINE = "subroutineCall"
+TERM_EXPRESSION = "(expression)"
+TERM_UNARY_TERM = "unaryOp term"
+WRONG = "wrong"
 
 # compile statement and compile expression need look ahead, so no need advance after call, we will call advance inside
 # maybe all function no need advance after call, we can put inside, --> optimise
@@ -32,6 +44,8 @@ def structure_type(keyword):
         return VAR_DEC
     if keyword in {"let", "if", "while", "do", "return", "else"}:
         return STATEMENT
+    else:
+        return WRONG
 
 
 class CompilationEngine:
@@ -57,22 +71,12 @@ class CompilationEngine:
         else:
             print("no more tokens")
 
-    def write_line(self, label, name):
-        self.write_indentation()
-        self.output.write("<{}> {} </{}>\n".format(label, name, label))
-
     # integrated write line function
     # from compile_var_dec and below it uses compile_line instead of write line, if time permits I will change the above
     def compile_line(self):
         self.write_indentation()
-        label = self.tokenizer.token_type()
-        name = ""
-        if label == KEYWORD:
-            name = self.tokenizer.keyword()
-        if label == SYMBOL:
-            name = self.tokenizer.symbol()
-        if label == IDENTIFIER:
-            name = self.tokenizer.identifier()
+        label = self.get_token_string_type()[1]
+        name = self.get_token_string_type()[0]
         self.output.write("<{}> {} </{}>\n".format(label, name, label))
 
     def write_tag(self, tag_name, start):
@@ -84,6 +88,27 @@ class CompilationEngine:
 
     def write_indentation(self):
         self.output.write("{}".format(self.nested_number * INDENTATION))
+
+    def is_binary_operation(self):
+        operations = {'+', '-', '*', '/', '&', '|', '<', '>', '='}
+        return self.tokenizer.token_type() == SYMBOL and self.tokenizer.symbol() in operations
+
+    # return string, type
+    def get_token_string_type(self):
+        if self.tokenizer.token_type() == KEYWORD:
+            return self.tokenizer.keyword(), KEYWORD
+        if self.tokenizer.token_type() == SYMBOL:
+            return self.tokenizer.symbol(), SYMBOL
+        if self.tokenizer.token_type() == IDENTIFIER:
+            return self.tokenizer.identifier(),IDENTIFIER
+        if self.tokenizer.token_type() == INT_CONSTANT:
+            return self.tokenizer.int_val(),INT_CONSTANT
+        if self.tokenizer.token_type() == STR_CONST:
+            return self.tokenizer.string_val(), STR_CONST
+
+    def write_empty_tag(self, tag_name):
+        self.write_tag(tag_name, True)
+        self.write_tag(tag_name, False)
 
     # we will not check correctness every time we write line
     # if input correct and our function correct, then there shall be no problem
@@ -97,13 +122,13 @@ class CompilationEngine:
         # class CLASSNAME { CLASSVARDEC* SUBROUTINEDEC* }
         self.nested_number += 1
         self.advance()
-        self.write_line(KEYWORD, "class")
+        self.compile_line()
         self.advance()
-        self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.compile_line()
         self.advance()
-        self.write_line(SYMBOL, "{")
+        self.compile_line()
+        self.advance()
 
-        self.advance()
         while self.tokenizer.has_more_tokens():
             if structure_type(self.tokenizer.keyword()) == CLASS_VAR_DEC:
                 self.compile_class_var_dec()
@@ -111,7 +136,7 @@ class CompilationEngine:
                 self.compile_subroutine()
             # assume no exceptions
             self.advance()
-        self.write_line(SYMBOL, "}")
+        self.compile_line()
         self.nested_number -= 1
         self.write_tag("class", False)
         pass
@@ -122,22 +147,22 @@ class CompilationEngine:
         self.write_tag("classVarDec", True)
         self.nested_number += 1
         # write keyword
-        self.write_line(KEYWORD, self.tokenizer.keyword())
+        self.compile_line()
         self.advance()
         # write type
-        self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.compile_line()
         self.advance()
         # write varName
-        self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.compile_line()
         self.advance()
         # if input correct, the token tpe should be symbol, either "," or ";"
         while self.tokenizer.symbol() == ",":
-            self.write_line(SYMBOL, ",")
+            self.compile_line()
             self.advance()
             # if input is correct, followed by the "," should be a variable name
-            self.write_line(IDENTIFIER, self.tokenizer.identifier())
+            self.compile_line()
             self.advance()
-        self.write_line(SYMBOL, ";")
+        self.compile_line()
         self.nested_number -= 1
         self.write_tag("classVarDec", False)
 
@@ -153,23 +178,28 @@ class CompilationEngine:
         self.write_tag("subroutineDec", True)
         self.nested_number += 1
 
-        self.write_line(KEYWORD, self.tokenizer.keyword())
+        self.compile_line()
         self.advance()
         # write return type, could be keyword or identifier
         if self.tokenizer.token_type() == KEYWORD:
-            self.write_line(KEYWORD, self.tokenizer.keyword())
+            self.compile_line()
         if self.tokenizer.token_type() == IDENTIFIER:
-            self.write_line(IDENTIFIER, self.tokenizer.identifier())
+            self.compile_line()
         self.advance()
         # write function name (subroutine name)
-        self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.compile_line()
         self.advance()
-        # if input correct, here should be "(", so there is no difference with using tokenizer.symbol
-        self.write_line(SYMBOL, "(")
+        # if input correct, here should be "("
+        self.compile_line()
         self.advance()
+        if self.get_token_string_type()[0] == ")":
+            self.write_empty_tag("parameterList")
         # write parameter list
-        self.compile_parameter_list()
-        self.write_line(SYMBOL, ")")
+        else:
+            self.compile_parameter_list()
+        # write ")"
+        self.compile_line()
+        self.advance()
         # write subroutine body
         self.compile_subroutine_body()
         self.nested_number -= 1
@@ -183,23 +213,24 @@ class CompilationEngine:
         # already at the first line of parameter list, aka the first argument's type (if exist)
         # if no parameter, then the current line is ")"
         # if input correct, then if token type is symbol, it must be ")"
-        if self.tokenizer.token_type() == SYMBOL:
-            return
         self.write_tag("parameterList", True)
         self.nested_number += 1
         # write arg[0] type, if input correct, this must be a key word (int, bool, etc)
-        self.write_line(KEYWORD, self.tokenizer.keyword())
+        self.compile_line()
         self.advance()
         # write variable name, if input correct, here must be an identifier, input name
-        self.write_line(IDENTIFIER, self.tokenizer.identifier())
+        self.compile_line()
         self.advance()
         # if input correct, here must be a symbol, either "," or ")"
         while self.tokenizer.symbol() == ",":
+            # write ","
+            self.compile_line()
+            self.advance()
             # write arg[i] type, if input correct, this must be a key word (int, bool, etc)
-            self.write_line(KEYWORD, self.tokenizer.keyword())
+            self.compile_line()
             self.advance()
             # write variable name, if input correct, here must be an identifier, input name
-            self.write_line(IDENTIFIER, self.tokenizer.identifier())
+            self.compile_line()
             self.advance()
         self.nested_number -= 1
         self.write_tag("parameterList", False)
@@ -210,7 +241,7 @@ class CompilationEngine:
         # if input correct, current line is "{"
         self.write_tag("subroutineBody", True)
         self.nested_number += 1
-        self.write_line(SYMBOL, "{")
+        self.compile_line()
         self.advance()
         # write var_dec if exist any
         while structure_type(self.tokenizer.keyword()) == VAR_DEC:
@@ -221,7 +252,7 @@ class CompilationEngine:
         if structure_type(self.tokenizer.keyword()) == STATEMENT:
             self.compile_statements()
         # if input correct, here should simply be "{', no need for tokenizer.symbol
-        self.write_line(SYMBOL, "}")
+        self.compile_line()
         self.nested_number -= 1
         self.write_tag("subroutineBody", False)
         pass
@@ -231,7 +262,7 @@ class CompilationEngine:
         self.write_tag("varDec", True)
         self.nested_number += 1
         # if input correct, tokenizer.keyword == var
-        self.write_line(KEYWORD, "var")
+        self.compile_line()
         self.advance()
         # write type
         self.compile_line()
@@ -261,20 +292,22 @@ class CompilationEngine:
         "{}".
         """
         # so for in the caller's level, after every call of compile_statment, no need to call advance()
-
+        # my implementation might include the case {}
         self.write_tag("statements", True)
         self.nested_number += 1
         # current line should be the keyword o which kind of statement
-        if self.tokenizer.keyword() == "let":
-            self.compile_let()
-        if self.tokenizer.keyword() == "if":
-            self.compile_if()
-        if self.tokenizer.keyword() == "while":
-            self.compile_while()
-        if self.tokenizer.keyword() == "do":
-            self.compile_do()
-        if self.tokenizer.keyword() == "return":
-            self.compile_return()
+
+        while structure_type(self.get_token_string_type()[0]) == STATEMENT:
+            if self.tokenizer.keyword() == "let":
+                self.compile_let()
+            if self.tokenizer.keyword() == "if":
+                self.compile_if()
+            if self.tokenizer.keyword() == "while":
+                self.compile_while()
+            if self.tokenizer.keyword() == "do":
+                self.compile_do()
+            if self.tokenizer.keyword() == "return":
+                self.compile_return()
 
         self.advance()
         # because of my advance logic, else statement will be handled specially
@@ -305,7 +338,18 @@ class CompilationEngine:
         pass
 
     def compile_subroutine_call(self) -> None:
-        pass
+        # current line is subroutine's name or (className|varName)
+        self.compile_line()
+        self.advance()
+        # now use subroutine call a to take care or the rest?
+        # subroutine call a will look ahead so subroutine call will also look ahead
+        if self.get_token_string_type()[0] == "(":
+            self.handle_subroutine_call_a()
+        elif self.get_token_string_type()[0] == ".":
+            self.handle_subroutine_call_b()
+
+
+
 
     def compile_let(self) -> None:
         """Compiles a let statement."""
@@ -434,7 +478,25 @@ class CompilationEngine:
 
     def compile_expression(self) -> None:
         """Compiles an expression."""
-        # Your code goes here!
+        self.write_tag("expression", True)
+        self.nested_number += 1
+        # now we atr the first line of term
+        self.compile_term()
+        # handle term will look ahead
+        # if this input correct, if there's (op term), then we keep compile
+        # if there is something else, it is no longer expression anymore
+        # the term is not possible to be unary
+        while self.is_binary_operation():
+            # print "op"
+            self.compile_line()
+            self.advance()
+            # compile term
+            self.compile_term()
+
+        # after the compile expression, the current line is at the first line of next syntactic block
+        self.nested_number -= 1
+        self.write_tag("expression", False)
+
         pass
 
     def compile_term(self) -> None:
@@ -447,10 +509,130 @@ class CompilationEngine:
         to distinguish between the three possibilities. Any other token is not
         part of this term and should not be advanced over.
         """
-        # Your code goes here!
-        pass
+        self.write_tag("term", True)
+        self.nested_number += 1
+        # now we are at the first line of term
+        # look ahead
+        first_var = self.get_token_string_type()[0]
+        first_var_type = self.get_token_string_type()[1]
+        self.compile_line()
+        self.advance()
+        # now points at the second line
+        second_var = self.get_token_string_type()[0]
+        # at end of call, the current line is at the  
+        # now classify
+        if first_var_type == INT_CONSTANT:
+            self.handle_int_const()
+        elif first_var_type == STR_CONST:
+            self.handle_str_const()
+        # if it's a keyword, then the type is keyword constant?
+        elif first_var_type == KEYWORD:
+            self.handle_keyword_const()
+        elif first_var_type == IDENTIFIER:
+            if second_var == "[":
+                self.handle_var_expression()
+            elif second_var == "(":
+                self.handle_subroutine_call_a()
+            elif second_var == ".":
+                self.handle_subroutine_call_b()
+            # if input correct, else must be term
+            else:
+                self.handle_var()
+        elif first_var_type == SYMBOL:
+            if first_var == "(":
+                self.handle_expression()
+            # else it must be an unaryOperation
+            else:
+                self.handle_op_term()
+
+        # after the compile expression, the current line is at the first line of next syntactic block
+        self.nested_number -= 1
+        self.write_tag("term", False)
 
     def compile_expression_list(self) -> None:
         """Compiles a (possibly empty) comma-separated list of expressions."""
-        # Your code goes here!
+        self.write_tag("expressionList", True)
+        self.nested_number += 1
+        # currently at the first line of expression
+        # if there's no expression, this method should not be called
+        self.compile_expression()
+        while self.get_token_string_type()[0] == ",":
+            self.compile_line()
+            self.advance()
+            self.compile_expression()
+        self.nested_number -= 1
+        self.write_tag("expressionList", False)
         pass
+
+    def handle_int_const(self):
+        pass
+
+    def handle_str_const(self):
+        pass
+
+    def handle_keyword_const(self):
+        pass
+
+    def handle_var_expression(self):
+        # current line is at "["
+        self.compile_line()
+        self.advance()
+        self.compile_expression()
+        # compile expression looked ahead
+        # current line is "]"
+        self.compile_line()
+        self.advance()
+        pass
+
+    # handle one kind of (partial) subroutine call
+    def handle_subroutine_call_a(self):
+        # already written the subroutine name
+        # now write "("
+        self.compile_line()
+        self.advance()
+        # if next line is ")", then the expression list is empty
+        # else it's an expression list
+        if self.get_token_string_type()[0] != ")":
+            self.compile_expression_list()
+        else:
+            self.write_empty()
+        # compile expression list will look ahead
+        # write ")"
+        self.compile_line()
+        self.advance()
+        pass
+
+    def handle_var(self):
+        pass
+
+    def handle_expression(self):
+        # at the first line of expression
+        self.compile_expression()
+        # already at line after expression
+        # this line should be ")"
+        # write ")"
+        self.compile_line()
+        self.advance()
+        pass
+
+    def handle_op_term(self):
+        # op already written
+        # at the first line of a term
+        self.compile_term()
+        pass
+
+    def handle_subroutine_call_b(self):
+        # (className| varName) already written, current line is "."
+        # write "."
+        self.compile_line()
+        self.advance()
+        # current line is subroutine name
+        # can be replaced with compile subroutine
+        self.compile_line()
+        self.advance()
+        # whats lest the the rest of subroutine call
+        self.handle_subroutine_call_a()
+        pass
+
+
+
